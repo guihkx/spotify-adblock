@@ -29,12 +29,21 @@ macro_rules! hook {
     }
 }
 
+macro_rules! log {
+    ($should_log:expr, $($arg:tt)*) => {{
+        if $should_log {
+            eprintln!($($arg)*);
+        }
+    }}
+}
+
 #[derive(Deserialize)]
 struct Config {
     #[serde(with = "serde_regex")]
     allowlist: RegexSet,
     #[serde(with = "serde_regex")]
     denylist: RegexSet,
+    logging: bool
 }
 
 lazy_static! {
@@ -50,26 +59,27 @@ lazy_static! {
         ];
 
         if let Some(path) = config_paths.into_iter().find(|path| path.exists()) {
-            println!("[*] Config file: {}", path.to_str().unwrap());
+            log!(true, "[*] Config file: {}", path.to_str().unwrap());
             match read_to_string(path) {
                 Ok(config_string) => match toml::from_str(&config_string) {
                     Ok(config) => {
                         return config;
                     }
                     Err(error) => {
-                        println!("[*] Error: Parse config file ({})", error);
+                        log!(true, "[*] Error: Parse config file ({})", error);
                     }
                 },
                 Err(error) => {
-                    println!("[*] Error: Read config file ({})", error);
+                    log!(true, "[*] Error: Read config file ({})", error);
                 }
             }
         } else {
-            println!("[*] Error: No config file");
+            log!(true, "[*] Error: No config file");
         };
         Config {
             allowlist: RegexSet::empty(),
             denylist: RegexSet::empty(),
+            logging: false,
         }
     };
 }
@@ -79,10 +89,10 @@ hook! {
         let domain = CStr::from_ptr(node).to_str().unwrap();
 
         if CONFIG.allowlist.is_match(&domain) {
-            println!("[+] getaddrinfo:\t\t {}", domain);
+            log!(CONFIG.logging, "[+] getaddrinfo:\t\t {}", domain);
             REAL_GETADDRINFO(node, service, hints, res)
         } else {
-            println!("[-] getaddrinfo:\t\t {}", domain);
+            log!(CONFIG.logging, "[-] getaddrinfo:\t\t {}", domain);
             EAI_FAIL
         }
     }
@@ -96,10 +106,10 @@ hook! {
         cef_string_userfree_utf16_free(url_cef);
 
         if CONFIG.denylist.is_match(&url) {
-            println!("[-] cef_urlrequest_create:\t {}", url);
+            log!(CONFIG.logging, "[-] cef_urlrequest_create:\t {}", url);
             null()
         } else {
-            println!("[+] cef_urlrequest_create:\t {}", url);
+            log!(CONFIG.logging, "[+] cef_urlrequest_create:\t {}", url);
             REAL_CEF_URLREQUEST_CREATE(request, client, request_context)
         }
     }
